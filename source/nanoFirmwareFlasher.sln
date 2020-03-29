@@ -5,6 +5,10 @@ VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "nanoFirmwareFlasher", "nanoFirmwareFlasher\nanoFirmwareFlasher.csproj", "{762BA2A1-B3E9-4E26-9491-AE11D1F1C1EA}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "nanoFirmwareFlasher.Common", "nanoFirmwareFlasher.Common\nanoFirmwareFlasher.Common.csproj", "{B198C419-E502-4642-96E2-70D7F162B461}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "nanoFirmwareFlasher.Tests", "nanoFirmwareFlasher.Tests\nanoFirmwareFlasher.Tests.csproj", "{2CB72429-F18B-414D-B2EA-9109B0C2A81B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -19,6 +23,22 @@ Global
 		{762BA2A1-B3E9-4E26-9491-AE11D1F1C1EA}.Release|x64.ActiveCfg = Release|x64
 		{762BA2A1-B3E9-4E26-9491-AE11D1F1C1EA}.Release|x64.Build.0 = Release|x64
 		{762BA2A1-B3E9-4E26-9491-AE11D1F1C1EA}.Release|x86.ActiveCfg = Release|x64
+		{B198C419-E502-4642-96E2-70D7F162B461}.Debug|x64.ActiveCfg = Debug|x64
+		{B198C419-E502-4642-96E2-70D7F162B461}.Debug|x64.Build.0 = Debug|x64
+		{B198C419-E502-4642-96E2-70D7F162B461}.Debug|x86.ActiveCfg = Debug|x86
+		{B198C419-E502-4642-96E2-70D7F162B461}.Debug|x86.Build.0 = Debug|x86
+		{B198C419-E502-4642-96E2-70D7F162B461}.Release|x64.ActiveCfg = Release|x64
+		{B198C419-E502-4642-96E2-70D7F162B461}.Release|x64.Build.0 = Release|x64
+		{B198C419-E502-4642-96E2-70D7F162B461}.Release|x86.ActiveCfg = Release|x86
+		{B198C419-E502-4642-96E2-70D7F162B461}.Release|x86.Build.0 = Release|x86
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Debug|x64.Build.0 = Debug|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Debug|x86.Build.0 = Debug|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Release|x64.ActiveCfg = Release|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Release|x64.Build.0 = Release|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Release|x86.ActiveCfg = Release|Any CPU
+		{2CB72429-F18B-414D-B2EA-9109B0C2A81B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
