@@ -176,6 +176,24 @@ namespace nanoFramework.Tools.FirmwareFlasher
         }
 
         /// <summary>
+        /// Mass erase of the device
+        /// </summary>
+        public void EraseDevice()
+        {
+            if (Verbosity >= VerbosityLevel.Normal)
+            {
+                Console.Write("Mass erase device...");
+            }
+
+            StDfu.MassErase(_hDevice, Verbosity >= VerbosityLevel.Normal);
+
+            if (Verbosity >= VerbosityLevel.Normal)
+            {
+                Console.WriteLine(" OK");
+            }
+        }
+
+        /// <summary>
         /// Flash the DFU supplied to the connected device.
         /// </summary>
         /// <param name="filePath"></param>
@@ -194,17 +212,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
             // erase flash
             if (DoMassErase)
             {
-                if (Verbosity >= VerbosityLevel.Normal)
-                {
-                    Console.Write("Mass erase device...");
-                }
-
-                StDfu.MassErase(_hDevice, Verbosity >= VerbosityLevel.Normal);
-
-                if (Verbosity >= VerbosityLevel.Normal)
-                {
-                    Console.WriteLine(" OK");
-                }
+                EraseDevice();
             }
             else
             {

@@ -95,29 +95,10 @@ namespace nanoFramework.Tools.FirmwareFlasher
             // erase flash
             if (DoMassErase)
             {
-                if (Verbosity >= VerbosityLevel.Normal)
-                {
-                    Console.Write("Mass erase device...");
-                }
-
-                cliOuput = RunStLinkCli($"-c SN={DeviceId} UR -ME");
-
-                if (!cliOuput.Contains("Flash memory erased."))
+                if (!EraseDevice())
                 {
                     return ExitCodes.E5005;
                 }
-
-                if (Verbosity >= VerbosityLevel.Normal)
-                {
-                    Console.WriteLine(" OK");
-                }
-                else
-                {
-                    Console.WriteLine("");
-                }
-
-                // toggle mass erase so it's only performed before the first file is flashed
-                DoMassErase = false;
             }
 
             if (Verbosity == VerbosityLevel.Normal)
@@ -155,6 +136,39 @@ namespace nanoFramework.Tools.FirmwareFlasher
             }
 
             return ExitCodes.OK;
+        }
+
+        /// <summary>
+        /// Erase memory of the device
+        /// </summary>
+        /// <returns>True if successfull, false otherwise</returns>
+        public bool EraseDevice()
+        {
+            if (Verbosity >= VerbosityLevel.Normal)
+            {
+                Console.Write("Mass erase device...");
+            }
+
+            string cliOuput = RunStLinkCli($"-c SN={DeviceId} UR -ME");
+
+            if (!cliOuput.Contains("Flash memory erased."))
+            {
+                Console.WriteLine("");
+                return false;
+            }
+
+            if (Verbosity >= VerbosityLevel.Normal)
+            {
+                Console.WriteLine(" OK");
+            }
+            else
+            {
+                Console.WriteLine("");
+            }
+
+            // toggle mass erase so it's only performed before the first file is flashed
+            DoMassErase = false;
+            return true;
         }
 
         /// <summary>
@@ -216,30 +230,10 @@ namespace nanoFramework.Tools.FirmwareFlasher
             // erase flash
             if (DoMassErase)
             {
-                if (Verbosity >= VerbosityLevel.Normal)
+                if (!EraseDevice())
                 {
-                    Console.Write("Mass erase device...");
-                }
-
-                cliOuput = RunStLinkCli($"-c SN={DeviceId} UR -ME");
-
-                if (!cliOuput.Contains("Flash memory erased."))
-                {
-                    Console.WriteLine("");
                     return ExitCodes.E5005;
                 }
-
-                if (Verbosity >= VerbosityLevel.Normal)
-                {
-                    Console.WriteLine(" OK");
-                }
-                else
-                {
-                    Console.WriteLine("");
-                }
-
-                // toggle mass erase so it's only performed before the first file is flashed
-                DoMassErase = false;
             }
 
             if (Verbosity == VerbosityLevel.Normal)
