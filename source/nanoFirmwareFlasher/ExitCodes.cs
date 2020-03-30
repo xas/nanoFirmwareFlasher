@@ -40,8 +40,14 @@ namespace nanoFramework.Tools.FirmwareFlasher
         /// <summary>
         /// Error flashing DFU dvice
         /// </summary>
-        [Display(Name = "Error flashing DFU dvice.")]
+        [Display(Name = "Error flashing DFU device.")]
         E1003 = 1003,
+
+        /// <summary>
+        /// DFU device id is required
+        /// </summary>
+        [Display(Name = "No device ID set. Unable to continue.")]
+        E1004 = 1004,
 
         ////////////////////////
         // ESP32 tools Errors //
