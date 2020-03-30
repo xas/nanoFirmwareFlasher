@@ -13,6 +13,7 @@ using System.Linq;
 using CommandLine.Text;
 using System.IO;
 using System.Collections.Generic;
+using nanoFirmwareFlasher.Common;
 
 namespace nanoFramework.Tools.FirmwareFlasher
 {
@@ -44,7 +45,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
             UriBuilder uri = new UriBuilder(codeBase);
             var fullPath = Uri.UnescapeDataString(uri.Path);
             ExecutingPath = Path.GetDirectoryName(fullPath);
-            
+
             // check for empty argument collection
             if (!args.Any())
             {
@@ -53,7 +54,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
                 // because of short-comings in CommandLine parsing 
                 // need to customize the output to provide a consistent output
                 var parser = new Parser(config => config.HelpWriter = null);
-                var result = parser.ParseArguments<Options>(new string[] { "", ""});
+                var result = parser.ParseArguments<Options>(new string[] { "", "" });
 
                 var helpText = new HelpText(
                     new HeadingInfo(headerInfo),
@@ -69,11 +70,18 @@ namespace nanoFramework.Tools.FirmwareFlasher
                 return (int)ExitCodes.OK;
             }
 
-            var parsedArguments = Parser.Default.ParseArguments<Options>(args);
+            //var parsedArguments = Parser.Default.ParseArguments<Options>(args);
 
-            await parsedArguments
-                .WithParsedAsync(opts => RunOptionsAndReturnExitCodeAsync(opts))
-                .WithNotParsedAsync(errors => HandleErrorsAsync(errors));
+            //await parsedArguments
+            //    .WithParsedAsync(opts => RunOptionsAndReturnExitCodeAsync(opts))
+            //    .WithNotParsedAsync(errors => HandleErrorsAsync(errors));
+
+            Parser.Default.ParseArguments<ListOptions, BackupOptions, WriteOptions, EraseOptions>(args)
+                .WithParsed<ListOptions>(options => RunListOptionsAndReturnExitCodeAsync(options))
+                .WithParsed<BackupOptions>(options => RunBackupOptionsAndReturnExitCodeAsync(options))
+                .WithParsed<WriteOptions>(options => Task.Run(() => RunWriteOptionsAndReturnExitCodeAsync(options)))
+                .WithParsed<EraseOptions>(options => RunEraseOptionsAndReturnExitCodeAsync(options))
+                .WithNotParsed(errs => HandleErrorsAsync(errs));
 
             if (verbosityLevel > VerbosityLevel.Quiet)
             {
@@ -87,6 +95,481 @@ namespace nanoFramework.Tools.FirmwareFlasher
         {
             _exitCode = ExitCodes.E9000;
             return Task.CompletedTask;
+        }
+
+        private static void SetVerbosity(string verbosity)
+        {
+            switch (verbosity)
+            {
+                // quiet
+                case "q":
+                case "quiet":
+                    verbosityLevel = VerbosityLevel.Quiet;
+                    break;
+
+                // minimal
+                case "m":
+                case "minimal":
+                    verbosityLevel = VerbosityLevel.Minimal;
+                    break;
+
+                // normal
+                case "n":
+                case "normal":
+                    verbosityLevel = VerbosityLevel.Normal;
+                    break;
+
+                // detailed
+                case "d":
+                case "detailed":
+                    verbosityLevel = VerbosityLevel.Detailed;
+                    break;
+
+                // diagnostic
+                case "diag":
+                case "diagnostic":
+                    verbosityLevel = VerbosityLevel.Diagnostic;
+                    break;
+
+                default:
+                    throw new ArgumentException("Invalid option for Verbosity");
+            }
+        }
+
+        private static Task RunListOptionsAndReturnExitCodeAsync(ListOptions o)
+        {
+            SetVerbosity(o.Verbosity);
+            switch (o.Platform)
+            {
+                case Platform.stm32dfu:
+                    List<string> connecteStmDevices = StmDfuDevice.ListDfuDevices();
+                    if (connecteStmDevices.Count == 0)
+                    {
+                        Console.WriteLine("No DFU devices found");
+                    }
+                    else
+                    {
+                        Console.WriteLine("-- Connected DFU devices --");
+                        foreach (string deviceId in connecteStmDevices)
+                        {
+                            Console.WriteLine(deviceId);
+                        }
+                        Console.WriteLine("---------------------------");
+                    }
+
+                    // done here, this command has no further processing
+                    _exitCode = ExitCodes.OK;
+                    break;
+
+                case Platform.stm32jtag:
+                    try
+                    {
+                        List<string> connecteJtagDevices = StmJtagDevice.ListDevices();
+                        if (connecteJtagDevices.Count == 0)
+                        {
+                            Console.WriteLine("No JTAG devices found");
+                        }
+                        else
+                        {
+                            Console.WriteLine("-- Connected JTAG devices --");
+                            foreach (string deviceId in connecteJtagDevices)
+                            {
+                                Console.WriteLine(deviceId);
+                            }
+                            Console.WriteLine("---------------------------");
+                        }
+
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.OK;
+                    }
+                    catch (Exception ex)
+                    {
+                        // exception with 
+                        _exitCode = ExitCodes.E5000;
+                        _extraMessage = ex.Message;
+                    }
+                    break;
+
+                default:
+                    Console.WriteLine($"List action not yet implemented for platform {o.Platform}");
+                    break;
+            }
+            return Task.CompletedTask;
+        }
+
+        private static Task RunBackupOptionsAndReturnExitCodeAsync(BackupOptions o)
+        {
+            SetVerbosity(o.Verbosity);
+            switch (o.Platform)
+            {
+                case Platform.esp32:
+                    if (!o.PostValidate())
+                    {
+                        _exitCode = ExitCodes.E6001;
+                        break;
+                    }
+                    var espTool = new EspTool(
+                        o.SerialPort,
+                        o.BaudRate,
+                        o.FlashMode,
+                        o.FlashFrequency);
+
+                    EspTool.DeviceInfo esp32Device;
+                    if (espTool.ComPortAvailable)
+                    {
+                        try
+                        {
+                            esp32Device = espTool.TestChip();
+                        }
+                        catch (EspToolExecutionException ex)
+                        {
+                            _exitCode = ExitCodes.E4000;
+                            _extraMessage = ex.Message;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // couldn't open COM port
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.E6000;
+                        break;
+                    }
+                    try
+                    {
+                        // backup path specified, backup deployment
+                        _exitCode = Esp32Operations.BackupFlash(espTool, esp32Device, o.PathToSave, o.PathToSave, verbosityLevel);
+                        if (_exitCode != ExitCodes.OK)
+                        {
+                            // done here
+                            break;
+                        }
+                    }
+                    catch (ReadEsp32FlashException ex)
+                    {
+                        _exitCode = ExitCodes.E4004;
+                        _extraMessage = ex.Message;
+
+                        // done here
+                        break;
+                    }
+                    break;
+                default:
+                    Console.WriteLine($"Backup action not yet implemented for platform {o.Platform}");
+                    break;
+            }
+            return Task.CompletedTask;
+        }
+
+        private static Task RunEraseOptionsAndReturnExitCodeAsync(EraseOptions o)
+        {
+            SetVerbosity(o.Verbosity);
+            switch (o.Platform)
+            {
+                case Platform.stm32dfu:
+                    if (!o.PostValidate())
+                    {
+                        _exitCode = ExitCodes.E1004;
+                        break;
+                    }
+                    StmDfuDevice dfuDevice = new StmDfuDevice(o.DeviceId);
+                    if (!dfuDevice.DevicePresent)
+                    {
+                        // no DFU device found
+
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.E1000;
+                        break;
+                    }
+                    dfuDevice.EraseDevice();
+                    break;
+
+                case Platform.stm32jtag:
+                    if (!o.PostValidate())
+                    {
+                        _exitCode = ExitCodes.E1004;
+                        break;
+                    }
+                    try
+                    {
+                        var jtagDevice = new StmJtagDevice(o.DeviceId);
+
+                        if (!jtagDevice.DevicePresent)
+                        {
+                            // no JTAG device found
+                            // done here, this command has no further processing
+                            _exitCode = ExitCodes.E5001;
+                            break;
+                        }
+
+                        if (verbosityLevel >= VerbosityLevel.Normal)
+                        {
+                            Console.WriteLine($"Connected to JTAG device with ID { jtagDevice.DeviceId }");
+                        }
+
+                        // set verbosity
+                        jtagDevice.Verbosity = verbosityLevel;
+                        if (!jtagDevice.EraseDevice())
+                        {
+                            _exitCode = ExitCodes.E5005;
+                            break;
+                        }
+                    }
+                    catch (CantConnectToJtagDeviceException)
+                    {
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.E5002;
+                    }
+                    break;
+
+                case Platform.esp32:
+                    if (!o.PostValidate())
+                    {
+                        _exitCode = ExitCodes.E6001;
+                        break;
+                    }
+                    EspTool espTool = new EspTool(
+                        o.SerialPort,
+                        o.BaudRate,
+                        o.FlashMode,
+                        o.FlashFrequency);
+                    espTool.EraseFlash();
+                    break;
+
+                default:
+                    Console.WriteLine($"Backup action not yet implemented for platform {o.Platform}");
+                    break;
+            }
+            return Task.CompletedTask;
+        }
+
+        private async static Task RunWriteOptionsAndReturnExitCodeAsync(WriteOptions o)
+        {
+            ExitCodes operationResult;
+            SetVerbosity(o.Verbosity);
+            switch (o.Platform)
+            {
+                case Platform.stm32dfu:
+                    if (!o.PostValidate())
+                    {
+                        _exitCode = ExitCodes.E1004;
+                        break;
+                    }
+                    string dfuFilePath;
+                    if (o.Images == null || !o.Images.Any())
+                    {
+                        Stm32Firmware firmware = new Stm32Firmware(o.CommunityImage, null, !o.BetaVersion)
+                        {
+                            Verbosity = verbosityLevel
+                        };
+                        operationResult = await firmware.DownloadAndExtractAsync();
+                        if (operationResult != ExitCodes.OK)
+                        {
+                            _exitCode = operationResult;
+                            break;
+                        }
+                        dfuFilePath = firmware.DfuPackage;
+                    }
+                    else
+                    {
+                        // Can be only one file
+                        dfuFilePath = o.Images.Single();
+                    }
+                    // there is a DFU file argument, so follow DFU path
+                    var dfuDevice = new StmDfuDevice(o.DeviceId);
+                    if (!dfuDevice.DevicePresent)
+                    {
+                        // no DFU device found
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.E1000;
+                        break;
+                    }
+                    if (verbosityLevel >= VerbosityLevel.Normal)
+                    {
+                        Console.WriteLine($"Connected to DFU device with ID { dfuDevice.DeviceId }");
+                    }
+                    // set verbosity
+                    dfuDevice.Verbosity = verbosityLevel;
+                    try
+                    {
+                        dfuDevice.FlashDfuFile(dfuFilePath);
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.OK;
+                        break;
+                    }
+                    catch (DfuFileDoesNotExistException)
+                    {
+                        // DFU file doesn't exist
+                        _exitCode = ExitCodes.E1002;
+                    }
+                    catch (Exception ex)
+                    {
+                        // exception with DFU file
+                        _exitCode = ExitCodes.E1001;
+                        _extraMessage = ex.Message;
+                    }
+                    break;
+
+                case Platform.stm32jtag:
+                    if (!o.PostValidate())
+                    {
+                        _exitCode = ExitCodes.E1004;
+                        break;
+                    }
+                    List<string> imgFiles = new List<string>();
+                    if (o.Images == null || !o.Images.Any())
+                    {
+                        Stm32Firmware stm32Firmware = new Stm32Firmware(o.CommunityImage, null, !o.BetaVersion)
+                        {
+                            Verbosity = verbosityLevel
+                        };
+                        operationResult = await stm32Firmware.DownloadAndExtractAsync();
+                        if (operationResult != ExitCodes.OK)
+                        {
+                            _exitCode = operationResult;
+                            break;
+                        }
+                        imgFiles.Add(stm32Firmware.nanoBooterFile);
+                        imgFiles.Add(stm32Firmware.nanoCLRFile);
+                    }
+                    else
+                    {
+                        imgFiles.AddRange(o.Images);
+                    }
+                    // JATG device
+                    StmJtagDevice jtagDevice = new StmJtagDevice(o.DeviceId);
+                    if (!jtagDevice.DevicePresent)
+                    {
+                        // no JTAG device found
+                        _exitCode = ExitCodes.E5001;
+                        break;
+                    }
+                    if (verbosityLevel >= VerbosityLevel.Normal)
+                    {
+                        Console.WriteLine($"Connected to JTAG device with ID { jtagDevice.DeviceId }");
+                    }
+                    // set verbosity
+                    jtagDevice.Verbosity = verbosityLevel;
+                    // write HEX files to flash
+                    if (imgFiles.Any(f => f.EndsWith(".hex")))
+                    {
+                        _exitCode = jtagDevice.FlashHexFiles(imgFiles);
+                        break;
+                    }
+                    break;
+
+                case Platform.esp32:
+                    // COM port is mandatory for ESP32
+                    if (string.IsNullOrEmpty(o.SerialPort))
+                    {
+                        _exitCode = ExitCodes.E6001;
+                        break;
+                    }
+
+                    EspTool espTool = new EspTool(
+                        o.SerialPort,
+                        o.BaudRate,
+                        o.FlashMode,
+                        o.FlashFrequency);
+
+                    EspTool.DeviceInfo esp32Device;
+                    if (espTool.ComPortAvailable)
+                    {
+                        try
+                        {
+                            esp32Device = espTool.TestChip();
+                        }
+                        catch (EspToolExecutionException ex)
+                        {
+                            _exitCode = ExitCodes.E4000;
+                            _extraMessage = ex.Message;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // couldn't open COM port
+                        // done here, this command has no further processing
+                        _exitCode = ExitCodes.E6000;
+                        break;
+                    }
+
+                    if (verbosityLevel >= VerbosityLevel.Normal)
+                    {
+                        Console.WriteLine($"Connected to ESP32 { esp32Device.ChipName } with MAC address { esp32Device.MacAddress }");
+                        Console.WriteLine($"features { esp32Device.Features }");
+                        string flashSize = esp32Device.FlashSize >= 0x10000 ? $"{ esp32Device.FlashSize / 0x100000 }MB" : $"{ esp32Device.FlashSize / 0x400 }kB";
+                        Console.WriteLine($"Flash information: manufacturer 0x{ esp32Device.FlashManufacturerId } device 0x{ esp32Device.FlashDeviceModelId } size { flashSize }");
+                    }
+
+                    if (o.Images == null || !o.Images.Any())
+                    {
+                        Esp32Firmware esp32Firmware = new Esp32Firmware(o.CommunityImage, null, !o.BetaVersion)
+                        {
+                            Verbosity = verbosityLevel
+                        };
+
+                        // need to download update package?
+                        operationResult = await esp32Firmware.DownloadAndExtractAsync(esp32Device.FlashSize);
+                        if (operationResult != ExitCodes.OK)
+                        {
+                            _exitCode = operationResult;
+                            break;
+                        }
+                        // download successful
+                        // set verbosity
+                        espTool.Verbosity = verbosityLevel;
+                        try
+                        {
+                            if (verbosityLevel >= VerbosityLevel.Normal)
+                            {
+                                Console.Write($"Flashing firmware...");
+                            }
+
+                            // write to flash
+                            operationResult = espTool.WriteFlash(esp32Firmware.FlashPartitions);
+
+                            if (operationResult == ExitCodes.OK)
+                            {
+                                if (verbosityLevel >= VerbosityLevel.Normal)
+                                {
+                                    Console.WriteLine("OK");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("");
+                                }
+                            }
+
+                            if (_exitCode != ExitCodes.OK)
+                            {
+                                // done here
+                                return;
+                            }
+
+                            // done here
+                            _exitCode = ExitCodes.OK;
+                            return;
+                        }
+                        catch (ReadEsp32FlashException ex)
+                        {
+                            _exitCode = ExitCodes.E4004;
+                            _extraMessage = ex.Message;
+                        }
+                        catch (WriteEsp32FlashException ex)
+                        {
+                            _exitCode = ExitCodes.E4003;
+                            _extraMessage = ex.Message;
+                        }
+                        catch (EspToolExecutionException ex)
+                        {
+                            _exitCode = ExitCodes.E4000;
+                            _extraMessage = ex.Message;
+                        }
+                    }
+                    break;
+            }
+            return;
         }
 
         static async Task RunOptionsAndReturnExitCodeAsync(Options o)
@@ -180,7 +663,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
             if (string.IsNullOrEmpty(o.Platform))
             {
                 // JTAG related
-                if ( 
+                if (
                     o.ListJtagDevices ||
                     !string.IsNullOrEmpty(o.JtagDeviceId) ||
                     o.HexFile.Any() ||
@@ -189,7 +672,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
                     o.Platform = "stm32";
                 }
                 // DFU related
-                else if ( 
+                else if (
                     o.ListDevicesInDfuMode ||
                     !string.IsNullOrEmpty(o.DfuDeviceId) ||
                     !string.IsNullOrEmpty(o.DfuFile))
@@ -516,7 +999,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
                 {
                     // this has to be a JTAG connected device
 
-#region STM32 JTAG options
+                    #region STM32 JTAG options
 
                     try
                     {
@@ -565,7 +1048,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
                         _exitCode = ExitCodes.E5002;
                     }
 
-#endregion
+                    #endregion
                 }
                 else if (!string.IsNullOrEmpty(o.TargetName))
                 {
@@ -654,10 +1137,10 @@ namespace nanoFramework.Tools.FirmwareFlasher
                 }
             }
 
-#endregion
+            #endregion
 
 
-#region TI CC13x2 platform options
+            #region TI CC13x2 platform options
 
             if (o.Platform == "cc13x2")
             {
@@ -740,7 +1223,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
                     }
                 }
 
-                if(o.TIInstallXdsDrivers)
+                if (o.TIInstallXdsDrivers)
                 {
 
                     _exitCode = CC13x26x2Operations.InstallXds110Drivers(verbosityLevel);
@@ -753,7 +1236,7 @@ namespace nanoFramework.Tools.FirmwareFlasher
                 }
             }
 
-#endregion
+            #endregion
 
         }
 
